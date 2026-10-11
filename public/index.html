@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101a35">
+<title>تواصل مع عبقرينو</title>
+<style>
+:root{color-scheme:dark;--navy:#101a35;--panel:#192747;--gold:#e4bd68;--white:#fff;--muted:#c1c9d9;--line:#354565}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at top,#26385d,var(--navy) 65%);color:var(--white);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+header{padding:25px 18px;text-align:center;border-bottom:1px solid #ffffff18}
+.logo{width:58px;height:58px;border:2px solid var(--gold);border-radius:18px;display:grid;place-items:center;margin:auto;color:var(--gold);font-size:27px}
+h1{font-size:clamp(25px,6vw,38px);margin:13px 0 6px}
+.gold{color:var(--gold)}.muted{color:var(--muted);line-height:1.9}
+main{width:min(680px,92%);margin:26px auto 55px}
+.panel{background:#192747eF;border:1px solid var(--line);border-radius:22px;padding:22px;margin-bottom:17px;box-shadow:0 14px 35px #0002}
+h2{margin-top:0;font-size:22px}
+label{display:block;margin:14px 0 7px;color:var(--muted)}
+input,textarea{width:100%;padding:14px;border:1px solid var(--line);border-radius:12px;background:#101a35;color:white;font:inherit}
+button{border:0;border-radius:12px;padding:14px 18px;font:inherit;font-weight:700;cursor:pointer}
+.primary{background:var(--gold);color:#18213a;width:100%;margin-top:14px}
+.secondary{background:#26385d;color:white;border:1px solid var(--line);width:100%;margin-top:10px}
+.choice{padding:19px;border:1px solid var(--line);border-radius:16px;margin-top:12px;cursor:pointer;background:#111d39}
+.choice strong{display:block;color:var(--gold);font-size:18px;margin-bottom:5px}
+.hidden{display:none!important}
+#messages{display:flex;flex-direction:column;gap:9px;max-height:360px;overflow:auto;margin:16px 0}
+.msg{background:#101a35;border:1px solid var(--line);border-radius:12px;padding:11px;overflow-wrap:anywhere}
+.msg small{color:var(--gold);display:block;margin-bottom:5px}
+.notice{border-right:3px solid var(--gold);padding:10px 13px;background:#ffffff08;line-height:1.9}
+footer{text-align:center;padding:22px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">ع</div>
+  <h1>تواصل مع <span class="gold">عبقرينو</span></h1>
+  <div class="muted">مساحة للحوار والمعرفة والاستشارات</div>
+</header>
+<main>
+<section id="welcome" class="panel">
+  <h2>أهلًا بك</h2>
+  <p class="muted">ابدأ باسمك الكامل، وسيُنشأ لك معرّف خاص يمكنك الاحتفاظ به.</p>
+  <form id="register">
+    <label for="name">الاسم الكامل</label>
+    <input id="name" name="name" required minlength="3" maxlength="100" autocomplete="name" placeholder="اكتب اسمك الكامل">
+    <button class="primary">الدخول إلى التطبيق</button>
+  </form>
+</section>
+
+<section id="choices" class="panel hidden">
+  <h2>مرحبًا <span id="displayName" class="gold"></span></h2>
+  <p class="muted">معرّف المستخدم: <b id="userId" class="gold"></b></p>
+  <div class="choice" id="freeChoice">
+    <strong>استشارة عامة مجانية</strong>
+    <span class="muted">حوار عام وتبادل للمعلومات دون رسوم.</span>
+  </div>
+  <div class="choice" id="privateChoice">
+    <strong>استشارة خاصة — 200 جنيه</strong>
+    <span class="muted">يُراجع الدفع قبل إتاحة الغرفة الخاصة.</span>
+  </div>
+</section>
+
+<section id="free" class="panel hidden">
+  <h2>الاستشارة العامة المجانية</h2>
+  <p class="notice muted">المعلومات القانونية هنا عامة، ولا تُعد رأيًا قانونيًا نهائيًا أو بديلًا عن مراجعة المستندات مع محامٍ مختص.</p>
+  <div id="messages"></div>
+  <form id="sendMessage">
+    <label for="body">رسالتك</label>
+    <textarea id="body" required maxlength="2000" rows="3" placeholder="اكتب رسالتك هنا"></textarea>
+    <button class="primary">إرسال الرسالة</button>
+  </form>
+  <button class="secondary back">العودة للاختيارات</button>
+</section>
+
+<section id="private" class="panel hidden">
+  <h2>طلب استشارة خاصة</h2>
+  <p class="muted">الرسوم: <b class="gold">200 جنيه مصري</b></p>
+  <div class="notice">
+    حوّل الرسوم إلى محفظة الهاتف رقم <b class="gold" dir="ltr">01153747612</b>، ثم أدخل مرجع التحويل أدناه.
+    <br>لن تُفتح الغرفة الخاصة حتى تتم مراجعة الدفع واعتماده.
+  </div>
+  <form id="privateForm">
+    <label for="paymentRef">رقم العملية أو مرجع التحويل</label>
+    <input id="paymentRef" required maxlength="200" placeholder="أدخل مرجع التحويل">
+    <button class="primary">إرسال طلب المراجعة</button>
+  </form>
+  <p id="privateResult" class="muted"></p>
+  <button id="checkStatus" class="secondary">فحص حالة الطلب</button>
+  <button class="secondary back">العودة للاختيارات</button>
+</section>
+<p id="notice" class="muted" role="status"></p>
+</main>
+<footer>تواصل مع عبقرينو · نسخة تأسيسية</footer>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let token = localStorage.getItem('tawasulToken') || '';
+let currentUser = null;
+let socket = null;
+const screens = ['welcome','choices','free','private'];
+function show(id){screens.forEach(s=>$(s).classList.toggle('hidden',s!==id));$('notice').textContent='';}
+function message(text){$('notice').textContent=text;}
+async function api(url, options={}) {
+  const headers={'Content-Type':'application/json',...(options.headers||{})};
+  if(token) headers.Authorization='Bearer '+token;
+  const r=await fetch(url,{...options,headers});
+  const data=await r.json().catch(()=>({error:'تعذّر قراءة الرد'}));
+  if(!r.ok) throw new Error(data.error||'حدث خطأ');
+  return data;
+}
+function renderMessages(list){
+  const box=$('messages');box.replaceChildren();
+  for(const m of list){
+    const item=document.createElement('div');item.className='msg';
+    const who=document.createElement('small');who.textContent=m.name+' · '+new Date(m.createdAt).toLocaleString('ar-EG');
+    const body=document.createElement('div');body.textContent=m.body;
+    item.append(who,body);box.append(item);
+  }
+  box.scrollTop=box.scrollHeight;
+}
+async function enter(user){
+  currentUser=user;
+  $('displayName').textContent=user.name;
+  $('userId').textContent=user.id;
+  show('choices');
+  if(socket) socket.disconnect();
+  socket=io({auth:{token}});
+  socket.on('public:message',m=>{
+    const box=$('messages');
+    const el=document.createElement('div');el.className='msg';
+    const who=document.createElement('small');who.textContent=m.name+' · '+new Date(m.createdAt).toLocaleString('ar-EG');
+    const body=document.createElement('div');body.textContent=m.body;
+    el.append(who,body);box.append(el);box.scrollTop=box.scrollHeight;
+  });
+}
+$('register').addEventListener('submit',async e=>{
+  e.preventDefault();
+  try{
+    const data=await api('/api/register',{method:'POST',body:JSON.stringify({name:$('name').value})});
+    token=data.token;localStorage.setItem('tawasulToken',token);
+    enter({id:data.id,name:data.name});
+  }catch(err){message(err.message);}
+});
+$('freeChoice').onclick=async()=>{
+  try{const data=await api('/api/messages');renderMessages(data.messages);show('free');}
+  catch(err){message(err.message);}
+};
+$('privateChoice').onclick=async()=>{
+  show('private');
+  try{const data=await api('/api/private/status');showPrivateStatus(data.request);}
+  catch(err){message(err.message);}
+};
+function showPrivateStatus(r){
+  $('privateResult').textContent=r
+    ? 'حالة الطلب: '+({pending:'بانتظار مراجعة الدفع',approved:'تم اعتماد الدفع',rejected:'مرفوض'}[r.status]||r.status)
+    : 'لا يوجد طلب خاص حتى الآن.';
+}
+$('sendMessage').addEventListener('submit',async e=>{
+  e.preventDefault();
+  try{await api('/api/messages',{method:'POST',body:JSON.stringify({body:$('body').value})});$('body').value='';}
+  catch(err){message(err.message);}
+});
+$('privateForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  try{
+    const r=await api('/api/private/request',{method:'POST',body:JSON.stringify({paymentRef:$('paymentRef').value})});
+    $('privateResult').textContent=r.message;$('paymentRef').value='';
+  }catch(err){message(err.message);}
+});
+$('checkStatus').onclick=async()=>{
+  try{const r=await api('/api/private/status');showPrivateStatus(r.request);}
+  catch(err){message(err.message);}
+};
+document.querySelectorAll('.back').forEach(b=>b.onclick=()=>show('choices'));
+(async()=>{
+  if(!token)return;
+  try{const r=await api('/api/me');enter(r.user);}
+  catch{token='';localStorage.removeItem('tawasulToken');show('welcome');}
+})();
+</script>
+</body>
+</html>
