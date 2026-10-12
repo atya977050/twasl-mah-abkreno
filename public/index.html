@@ -59,6 +59,8 @@ footer{text-align:center;padding:22px;color:var(--muted);font-size:13px}
     <strong>استشارة خاصة — 200 جنيه</strong>
     <span class="muted">يُراجع الدفع قبل إتاحة الغرفة الخاصة.</span>
   </div>
+  <button id="adminButton" class="secondary hidden">لوحة الإدارة</button>
+  <button id="lawyerButton" class="secondary hidden">طلباتي المسندة كمحامٍ</button>
 </section>
 
 <section id="free" class="panel hidden">
@@ -83,12 +85,42 @@ footer{text-align:center;padding:22px;color:var(--muted);font-size:13px}
   <form id="privateForm">
     <label for="paymentRef">رقم العملية أو مرجع التحويل</label>
     <input id="paymentRef" required maxlength="200" placeholder="أدخل مرجع التحويل">
+    <label for="receipt">إيصال التحويل من الهاتف (صورة أو PDF، حتى 5 ميجابايت)</label>
+    <input id="receipt" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf" required>
     <button class="primary">إرسال طلب المراجعة</button>
   </form>
   <p id="privateResult" class="muted"></p>
   <button id="checkStatus" class="secondary">فحص حالة الطلب</button>
+  <button id="openPrivateRoom" class="primary hidden">فتح الغرفة الخاصة</button>
+  <div id="privateChat" class="hidden">
+    <h3>الغرفة الخاصة</h3>
+    <p class="muted">رسائلك محفوظة ولا تظهر في المحادثة العامة.</p>
+    <div id="privateMessages"></div>
+    <form id="privateMessageForm">
+      <label for="privateMessageBody">رسالتك الخاصة</label>
+      <textarea id="privateMessageBody" required maxlength="2000" rows="3" placeholder="اكتب رسالتك هنا"></textarea>
+      <button class="primary">إرسال الرسالة الخاصة</button>
+    </form>
+  </div>
   <button class="secondary back">العودة للاختيارات</button>
 </section>
+<section id="adminPanel" class="panel hidden">
+  <h2>لوحة الإدارة</h2>
+  <p class="muted">إدارة الحسابات وطلبات الاستشارات الخاصة.</p>
+  <button id="refreshAdmin" class="primary">تحديث البيانات</button>
+  <h3 class="gold">طلبات الاستشارات الخاصة</h3>
+  <div id="adminRequests"></div>
+  <h3 class="gold">الحسابات والأدوار</h3>
+  <div id="adminUsers"></div>
+  <button class="secondary back">العودة</button>
+</section>
+
+<section id="lawyerPanel" class="panel hidden">
+  <h2>الطلبات المسندة إليّ</h2>
+  <div id="lawyerRequests"></div>
+  <button class="secondary back">العودة</button>
+</section>
+
 <p id="notice" class="muted" role="status"></p>
 </main>
 <footer>تواصل مع عبقرينو · نسخة تأسيسية</footer>
@@ -98,11 +130,13 @@ const $ = id => document.getElementById(id);
 let token = localStorage.getItem('tawasulToken') || '';
 let currentUser = null;
 let socket = null;
-const screens = ['welcome','choices','free','private'];
+let privateRequestId = null;
+const screens = ['welcome','choices','free','private','adminPanel','lawyerPanel'];
 function show(id){screens.forEach(s=>$(s).classList.toggle('hidden',s!==id));$('notice').textContent='';}
 function message(text){$('notice').textContent=text;}
 async function api(url, options={}) {
-  const headers={'Content-Type':'application/json',...(options.headers||{})};
+  const headers={...(options.headers||{})};
+  if (!(options.body instanceof FormData)) headers['Content-Type']='application/json';
   if(token) headers.Authorization='Bearer '+token;
   const r=await fetch(url,{...options,headers});
   const data=await r.json().catch(()=>({error:'تعذّر قراءة الرد'}));
@@ -121,8 +155,14 @@ function renderMessages(list){
 }
 async function enter(user){
   currentUser=user;
+  $('adminButton').classList.toggle('hidden', user.role !== 'admin');
+  $('lawyerButton').classList.toggle('hidden', user.role !== 'lawyer');
+  $('privateForm').classList.toggle(
+    'hidden', user.role !== 'client' || user.id === 'ABQ-4085029FADFB'
+  );
   $('displayName').textContent=user.name;
   $('userId').textContent=user.id;
+  $('privateForm').classList.toggle('hidden', user.id === 'ABQ-4085029FADFB');
   show('choices');
   if(socket) socket.disconnect();
   socket=io({auth:{token}});
@@ -133,13 +173,227 @@ async function enter(user){
     const body=document.createElement('div');body.textContent=m.body;
     el.append(who,body);box.append(el);box.scrollTop=box.scrollHeight;
   });
+  socket.on('private:message',m=>{
+    if(m.requestId !== privateRequestId || $('privateChat').classList.contains('hidden')) return;
+    appendPrivateMessage(m);
+  });
+  socket.on('private:error',data=>message(data.error || 'تعذر دخول الغرفة الخاصة'));
 }
+
+function makeAdminCard(title, details) {
+  const card = document.createElement('div');
+  card.className = 'msg';
+  const heading = document.createElement('strong');
+  heading.textContent = title;
+  const text = document.createElement('p');
+  text.className = 'muted';
+  text.textContent = details;
+  card.append(heading, text);
+  return card;
+}
+
+async function loadAdmin() {
+  if (!currentUser || currentUser.role !== 'admin') {
+    message('هذه الوظيفة متاحة للإدارة المعتمدة فقط');
+    return;
+  }
+  show('adminPanel');
+  $('adminRequests').replaceChildren();
+  $('adminUsers').replaceChildren();
+
+  try {
+    const [requestData, userData] = await Promise.all([
+      api('/api/admin/private-requests'),
+      api('/api/admin/users')
+    ]);
+
+    const lawyers = userData.users.filter(u => u.role === 'lawyer');
+
+    if (!requestData.requests.length) {
+      $('adminRequests').append(makeAdminCard('لا توجد طلبات', 'لم تصل طلبات استشارة خاصة بعد.'));
+    }
+
+    for (const r of requestData.requests) {
+      const card = makeAdminCard(
+        'صاحب الطلب: ' + r.clientName,
+        'مرجع الدفع: ' + r.paymentRef +
+        ' · الرسوم: ' + r.fee + ' جنيه' +
+        ' · الحالة: ' + r.status +
+        ' · المحامي: ' + (r.lawyerName || 'لم يُعيّن')
+      );
+
+      if (r.hasReceipt) {
+        const receiptButton = document.createElement('button');
+        receiptButton.className = 'secondary';
+        receiptButton.textContent = 'عرض إيصال الدفع';
+        receiptButton.onclick = async () => {
+          try {
+            const response = await fetch(
+              '/api/admin/private/' + encodeURIComponent(r.id) + '/receipt',
+              { headers: { Authorization: 'Bearer ' + token } }
+            );
+            if (!response.ok) {
+              const err = await response.json().catch(() => ({}));
+              throw new Error(err.error || 'تعذر فتح الإيصال');
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+          } catch (err) {
+            message(err.message);
+          }
+        };
+        card.append(receiptButton);
+      }
+
+      if (r.status === 'pending') {
+        const approve = document.createElement('button');
+        approve.className = 'primary';
+        approve.textContent = 'اعتماد الدفع';
+        approve.onclick = async () => {
+          try {
+            await api('/api/admin/private/' + encodeURIComponent(r.id) + '/approve', {
+              method: 'POST', body: JSON.stringify({})
+            });
+            await loadAdmin();
+          } catch (err) { message(err.message); }
+        };
+        card.append(approve);
+      }
+
+      if (r.status === 'approved') {
+        const select = document.createElement('select');
+        select.style.cssText = 'width:100%;padding:12px;margin-top:10px;border-radius:10px;background:#101a35;color:white';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'اختر محاميًا معتمدًا';
+        select.append(placeholder);
+
+        for (const lawyer of lawyers) {
+          const option = document.createElement('option');
+          option.value = lawyer.id;
+          option.textContent = lawyer.name;
+          if (lawyer.id === r.lawyerId) option.selected = true;
+          select.append(option);
+        }
+
+        const assign = document.createElement('button');
+        assign.className = 'secondary';
+        assign.textContent = 'تعيين المحامي';
+        assign.disabled = lawyers.length === 0;
+        assign.onclick = async () => {
+          if (!select.value) {
+            message('اختر محاميًا معتمدًا أولًا');
+            return;
+          }
+          try {
+            await api('/api/admin/private/' + encodeURIComponent(r.id) + '/assign', {
+              method: 'POST',
+              body: JSON.stringify({ lawyerId: select.value })
+            });
+            await loadAdmin();
+          } catch (err) { message(err.message); }
+        };
+        card.append(select, assign);
+      }
+
+      $('adminRequests').append(card);
+    }
+
+    if (!userData.users.length) {
+      $('adminUsers').append(makeAdminCard('لا توجد حسابات', ''));
+    }
+
+    for (const u of userData.users) {
+      const card = makeAdminCard(u.name, 'المعرّف: ' + u.id + ' · الدور: ' + u.role);
+
+      if (u.role === 'client') {
+        const promote = document.createElement('button');
+        promote.className = 'secondary';
+        promote.textContent = 'اعتماد كمحامٍ';
+        promote.onclick = async () => {
+          if (!confirm('هل تريد اعتماد هذا الحساب كمحامٍ؟')) return;
+          try {
+            await api('/api/admin/users/' + encodeURIComponent(u.id) + '/role', {
+              method: 'POST', body: JSON.stringify({ role: 'lawyer' })
+            });
+            await loadAdmin();
+          } catch (err) { message(err.message); }
+        };
+        card.append(promote);
+      } else if (u.role === 'lawyer') {
+        const demote = document.createElement('button');
+        demote.className = 'secondary';
+        demote.textContent = 'إلغاء صفة المحامي';
+        demote.onclick = async () => {
+          if (!confirm('هل تريد إعادة هذا الحساب إلى دور المستخدم العادي؟')) return;
+          try {
+            await api('/api/admin/users/' + encodeURIComponent(u.id) + '/role', {
+              method: 'POST', body: JSON.stringify({ role: 'client' })
+            });
+            await loadAdmin();
+          } catch (err) { message(err.message); }
+        };
+        card.append(demote);
+      }
+
+      $('adminUsers').append(card);
+    }
+  } catch (err) {
+    message(err.message);
+  }
+}
+
+async function loadLawyerRequests() {
+  if (!currentUser || currentUser.role !== 'lawyer') {
+    message('هذه الوظيفة للمحامين المعتمدين فقط');
+    return;
+  }
+  show('lawyerPanel');
+  $('lawyerRequests').replaceChildren();
+
+  try {
+    const data = await api('/api/lawyer/requests');
+    if (!data.requests.length) {
+      $('lawyerRequests').append(makeAdminCard('لا توجد طلبات مسندة', 'ستظهر هنا الطلبات المعتمدة التي تعيّنك الإدارة عليها.'));
+      return;
+    }
+    for (const r of data.requests) {
+      const card = makeAdminCard('الموكل: ' + r.clientName, 'رقم الطلب: ' + r.id);
+      const open = document.createElement('button');
+      open.className = 'primary';
+      open.textContent = 'فتح الغرفة الخاصة';
+      open.onclick = async () => {
+        privateRequestId = r.id;
+        show('private');
+        $('privateForm').classList.add('hidden');
+        $('privateResult').textContent = 'طلب مسند إليك كمحامٍ.';
+        $('openPrivateRoom').classList.remove('hidden');
+        $('openPrivateRoom').click();
+      };
+      card.append(open);
+      $('lawyerRequests').append(card);
+    }
+  } catch (err) {
+    message(err.message);
+  }
+}
+
+$('adminButton').addEventListener('click', loadAdmin);
+$('refreshAdmin').addEventListener('click', loadAdmin);
+$('lawyerButton').addEventListener('click', loadLawyerRequests);
+
 $('register').addEventListener('submit',async e=>{
   e.preventDefault();
   try{
     const data=await api('/api/register',{method:'POST',body:JSON.stringify({name:$('name').value})});
     token=data.token;localStorage.setItem('tawasulToken',token);
-    enter({id:data.id,name:data.name});
+    enter({id:data.id,name:data.name,role:'client'});
   }catch(err){message(err.message);}
 });
 $('freeChoice').onclick=async()=>{
@@ -148,14 +402,55 @@ $('freeChoice').onclick=async()=>{
 };
 $('privateChoice').onclick=async()=>{
   show('private');
-  try{const data=await api('/api/private/status');showPrivateStatus(data.request);}
-  catch(err){message(err.message);}
+  $('privateChat').classList.add('hidden');
+  $('openPrivateRoom').classList.add('hidden');
+  privateRequestId=null;
+  const exempt=currentUser && currentUser.id === 'ABQ-4085029FADFB';
+  $('privateForm').classList.toggle('hidden', !!exempt);
+  try{
+    const data=await api('/api/private/status');
+    showPrivateStatus(data.request);
+  }catch(err){message(err.message);}
 };
 function showPrivateStatus(r){
+  privateRequestId = r && r.status === 'approved' && r.id ? r.id : null;
+  $('privateChat').classList.add('hidden');
+  $('openPrivateRoom').classList.toggle('hidden', !privateRequestId);
+
+  if(r && r.exempt){
+    $('privateForm').classList.add('hidden');
+    $('privateResult').textContent='هذا الحساب معفى من الرسوم.';
+    return;
+  }
   $('privateResult').textContent=r
     ? 'حالة الطلب: '+({pending:'بانتظار مراجعة الدفع',approved:'تم اعتماد الدفع',rejected:'مرفوض'}[r.status]||r.status)
     : 'لا يوجد طلب خاص حتى الآن.';
 }
+function appendPrivateMessage(m){
+  const box=$('privateMessages');
+  const item=document.createElement('div');item.className='msg';
+  const who=document.createElement('small');
+  who.textContent=m.name+' · '+new Date(m.createdAt).toLocaleString('ar-EG');
+  const body=document.createElement('div');body.textContent=m.body;
+  item.append(who,body);box.append(item);box.scrollTop=box.scrollHeight;
+}
+$('openPrivateRoom').onclick=()=>{
+  if(!privateRequestId){message('لا يوجد طلب معتمد لفتح الغرفة');return;}
+  location.href='/private-chat.html?requestId='+encodeURIComponent(privateRequestId);
+};
+$('privateMessageForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  if(!privateRequestId){message('الغرفة الخاصة غير متاحة');return;}
+  const body=$('privateMessageBody').value.trim();
+  if(!body || body.length>2000){message('اكتب رسالة بحد أقصى 2000 حرف');return;}
+  try{
+    await api('/api/private/messages',{
+      method:'POST',
+      body:JSON.stringify({requestId:privateRequestId,body})
+    });
+    $('privateMessageBody').value='';
+  }catch(err){message(err.message);}
+});
 $('sendMessage').addEventListener('submit',async e=>{
   e.preventDefault();
   try{await api('/api/messages',{method:'POST',body:JSON.stringify({body:$('body').value})});$('body').value='';}
@@ -163,9 +458,18 @@ $('sendMessage').addEventListener('submit',async e=>{
 });
 $('privateForm').addEventListener('submit',async e=>{
   e.preventDefault();
+  const file=$('receipt').files[0];
+  if(!file){message('أرفق إيصال التحويل أولًا');return;}
+  if(file.size>5*1024*1024){message('حجم الإيصال يجب ألا يتجاوز 5 ميجابايت');return;}
+  const form=new FormData();
+  form.append('paymentRef',$('paymentRef').value);
+  form.append('receipt',file);
   try{
-    const r=await api('/api/private/request',{method:'POST',body:JSON.stringify({paymentRef:$('paymentRef').value})});
-    $('privateResult').textContent=r.message;$('paymentRef').value='';
+    const r=await api('/api/private/request',{method:'POST',body:form});
+    $('privateResult').textContent=r.message;
+    if(r.id) showPrivateStatus({id:r.id,status:r.status,exempt:!!r.exempt});
+    $('paymentRef').value='';
+    $('receipt').value='';
   }catch(err){message(err.message);}
 });
 $('checkStatus').onclick=async()=>{

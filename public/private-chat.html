@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>الغرفة الخاصة | تواصل مع عبقرينو</title>
+<style>
+:root{color-scheme:dark;--bg:#101827;--panel:#192438;--gold:#d8b45a;--text:#f4f1e8;--muted:#b8c2d2}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif}
+main{max-width:760px;margin:24px auto;padding:16px}
+header,.panel{background:var(--panel);border:1px solid #344158;border-radius:16px;padding:18px;margin-bottom:14px}
+h1{font-size:1.35rem;color:var(--gold);margin-top:0}
+p{line-height:1.8;color:var(--muted)}
+button,input{font:inherit;border-radius:10px;padding:12px}
+button{background:var(--gold);color:#172033;border:0;font-weight:700}
+input{width:100%;background:#101827;color:var(--text);border:1px solid #46536a}
+#status{white-space:pre-wrap}
+.video-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.video-card{background:#101827;border:1px solid #46536a;border-radius:12px;padding:8px;min-width:0}
+.video-card video{display:block;width:100%;max-width:100%;aspect-ratio:4/3;object-fit:cover;background:#080d16;border-radius:8px}
+.video-card strong{display:block;color:var(--gold);text-align:center;margin:6px}
+.toolbar{display:flex;flex-wrap:nowrap;align-items:center;justify-content:space-between;gap:6px;margin:12px 0;overflow-x:auto}
+.toolbar button,.tool-icon{flex:0 0 42px;width:42px;height:42px;min-width:42px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;font-size:19px}
+.toolbar .file-picker{display:none}
+.toolbar .file-label{flex:0 0 42px;width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;background:var(--gold);color:#172033;font-size:19px;cursor:pointer}
+.video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+#messages{max-height:45vh;overflow-y:auto;padding:8px;border:1px solid #344158;border-radius:12px;background:#101827}
+#sendForm{align-items:center}
+#messageInput{min-width:0;flex:1}
+.message-attachment{display:inline-flex;align-items:center;gap:8px;margin-top:8px;padding:9px 12px;background:#26344b;color:var(--text);border:1px solid #46536a;border-radius:10px;text-decoration:none;overflow-wrap:anywhere}
+.message-meta{display:block;margin-top:6px;color:var(--muted);font-size:12px}
+button:disabled{opacity:.55}
+@media(max-width:420px){main{padding:8px}.video-grid{gap:6px}.video-card{padding:4px}.toolbar{gap:5px}.toolbar button,.tool-icon,.toolbar .file-label{flex-basis:38px;width:38px;min-width:38px;height:38px}#messages{max-height:42vh}}
+
+
+</style>
+</head>
+<body>
+<main>
+<header><h1>الغرفة الخاصة</h1><p>تواصل آمن بين أطراف الاستشارة المعتمدة.</p></header>
+<section class="panel">
+<p id="status">جارٍ التحقق من تسجيل الدخول ورقم الاستشارة...</p>
+
+<div class="video-grid">
+  <div class="video-card">
+    <video id="localVideo" autoplay playsinline muted></video>
+    <strong>الكاميرا الخاصة بي</strong>
+  </div>
+  <div class="video-card">
+    <video id="remoteVideo" autoplay playsinline></video>
+    <strong>الطرف الآخر</strong>
+  </div>
+</div>
+<div id="messages" aria-live="polite"></div>
+<form id="sendForm" style="display:flex;gap:8px;margin-top:12px">
+<input id="messageInput" maxlength="2000" placeholder="اكتب رسالتك..." autocomplete="off" required>
+<button type="submit" aria-label="إرسال الرسالة" title="إرسال">➤</button>
+</form>
+<div class="toolbar" aria-label="أدوات الغرفة">
+  <button type="button" id="cameraBtn" class="tool-icon" aria-label="تشغيل الكاميرا" title="تشغيل الكاميرا">📷</button>
+  <button type="button" id="micBtn" class="tool-icon" aria-label="كتم الميكروفون" title="كتم الميكروفون" disabled>🎙</button>
+  <label class="file-label" for="attachmentInput" aria-label="اختيار ملف" title="إرفاق ملف">📎</label>
+  <button type="button" id="voiceRecordBtn" class="tool-icon" aria-label="بدء تسجيل صوتي" title="تسجيل رسالة صوتية">🎤</button>
+  <input type="file" id="attachmentInput" class="file-picker" accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.mp3,.wav,.ogg,.m4a,.webm,.mp4,.mov" aria-label="اختيار ملف للإرسال">
+  <button type="button" id="uploadBtn" class="tool-icon" aria-label="إرسال الملف المحدد" title="إرسال الملف">⬆</button>
+  <button type="button" id="endCallBtn" class="tool-icon" aria-label="إنهاء الاتصال" title="إنهاء الاتصال" disabled>📴</button>
+</div>
+</section>
+</main>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+"use strict";
+const token = localStorage.getItem("tawasulToken") || "";
+const requestId = new URLSearchParams(location.search).get("requestId") || "";
+const statusBox = document.getElementById("status");
+if (!token) {
+  statusBox.textContent = "يلزم تسجيل الدخول أولًا من الصفحة الرئيسية.";
+} else if (!requestId) {
+  statusBox.textContent = "رقم الاستشارة غير موجود في رابط الغرفة.";
+} else {
+  const messagesBox = document.getElementById("messages");
+  const form = document.getElementById("sendForm");
+  const input = document.getElementById("messageInput");
+  const seen = new Set();
+  let socket = null;
+
+  function showMessage(m) {
+    const key = String(m.id || "");
+    if (key && seen.has(key)) return;
+    if (key) seen.add(key);
+    const item = document.createElement("article");
+    item.style.cssText = "padding:12px;margin:10px 0;border:1px solid #344158;border-radius:10px;overflow-wrap:anywhere";
+    const name = document.createElement("strong");
+    name.textContent = String(m.name || "مستخدم");
+    name.style.color = "#d8b45a";
+    const body = document.createElement("p");
+    body.textContent = m.messageType === "attachment" ? "" : String(m.body || "");
+    const time = document.createElement("small");
+    time.className = "message-meta";
+    time.textContent = String(m.createdAt || "");
+    item.append(name);
+    if (body.textContent) item.append(body);
+    if (m.messageType === "attachment" || m.downloadUrl || m.attachmentId) {
+      const link = document.createElement("a");
+      const attachmentId = String(m.attachmentId || "");
+      link.className = "message-attachment";
+      link.href = m.downloadUrl || (attachmentId ? "/api/private/attachments/" + encodeURIComponent(attachmentId) : "#");
+      link.textContent = "📎 " + String(m.originalName || m.body || "تنزيل المرفق");
+      link.target = "_blank";
+      link.rel = "noopener";
+      item.append(link);
+      if (String(m.mimeType || "").startsWith("audio/")) {
+        const audio = document.createElement("audio");
+        audio.controls = true;
+        audio.preload = "metadata";
+        audio.style.cssText = "display:block;width:100%;max-width:100%;margin-top:8px";
+        audio.setAttribute("aria-label", "تشغيل الرسالة الصوتية");
+        item.append(audio);
+        fetch(link.href, {headers: {Authorization: "Bearer " + token}})
+          .then(response => {
+            if (!response.ok) throw new Error("تعذر تحميل التسجيل الصوتي.");
+            return response.blob();
+          })
+          .then(blob => { audio.src = URL.createObjectURL(blob); })
+          .catch(() => {
+            audio.remove();
+          });
+      }
+      if (m.fileSize) {
+        const size = document.createElement("small");
+        size.className = "message-meta";
+        size.textContent = "حجم الملف: " + Math.ceil(Number(m.fileSize) / 1024) + " كيلوبايت";
+        item.append(size);
+      }
+    }
+    item.append(time);
+    messagesBox.appendChild(item);
+  }
+
+  async function api(path, options = {}) {
+    const response = await fetch(path, {
+      ...options,
+      headers: {
+        Authorization: "Bearer " + token,
+        ...(options.body ? {"Content-Type":"application/json"} : {}),
+        ...(options.headers || {})
+      }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "تعذر تنفيذ الطلب (" + response.status + ")");
+    return data;
+  }
+
+  async function start() {
+    try {
+      const data = await api("/api/private/messages?requestId=" + encodeURIComponent(requestId));
+      (data.messages || []).forEach(showMessage);
+      statusBox.textContent = "تم التحقق من صلاحية الغرفة.";
+      socket = io({auth:{token}});
+      let myUserId = null;
+      let localStream = null;
+      let peerConnection = null;
+      let remoteUserId = null;
+      let pendingOffer = null;
+      const pendingIceCandidates = [];
+      const localVideo = document.getElementById("localVideo");
+      const remoteVideo = document.getElementById("remoteVideo");
+      const cameraBtn = document.getElementById("cameraBtn");
+      const micBtn = document.getElementById("micBtn");
+      const endCallBtn = document.getElementById("endCallBtn");
+      const peers = new Map();
+
+      socket.on("session:ready", d => { myUserId = String(d.userId); });
+      socket.on("private:peers", list => {
+        for (const peer of list || []) {
+          peers.set(String(peer.userId), true);
+          if (localStream && myUserId < String(peer.userId)) connectPeer(String(peer.userId));
+        }
+      });
+      socket.on("private:peer-joined", peer => {
+        const id = String(peer.userId);
+        peers.set(id, true);
+        if (localStream && myUserId < id) connectPeer(id);
+      });
+      socket.on("private:peer-left", peer => {
+        peers.delete(String(peer.userId));
+        closePeer();
+      });
+
+      function makePeer() {
+        if (peerConnection) return peerConnection;
+        peerConnection = new RTCPeerConnection({
+          iceServers: [{urls:"stun:stun.l.google.com:19302"}]
+        });
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+        peerConnection.ontrack = async event => {
+          const stream = event.streams && event.streams[0];
+          if (!stream) {
+            statusBox.textContent = "وصل مسار الوسائط دون تدفق قابل للعرض.";
+            return;
+          }
+          remoteVideo.srcObject = stream;
+          try {
+            await remoteVideo.play();
+            statusBox.textContent = "تم ربط بث الطرف الآخر؛ جارٍ عرض الفيديو.";
+          } catch (e) {
+            statusBox.textContent =
+              "وصل البث، لكن التشغيل التلقائي تعذر. اضغط على نافذة فيديو الطرف الآخر.";
+            console.warn("تعذر تشغيل الفيديو البعيد:", e);
+          }
+        };
+        peerConnection.onicecandidate = event => {
+          if (event.candidate && socket?.connected)
+            socket.emit("private:rtc-ice", {requestId, candidate:event.candidate.toJSON()});
+        };
+        peerConnection.oniceconnectionstatechange = () => {
+          if (!peerConnection) return;
+          const state = peerConnection.iceConnectionState;
+          console.log("[RTC] ICE:", state);
+          statusBox.textContent = "حالة ICE: " + state;
+        };
+        peerConnection.onsignalingstatechange = () => {
+          if (peerConnection) console.log("[RTC] Signaling:", peerConnection.signalingState);
+        };
+        peerConnection.onconnectionstatechange = () => {
+          if (!peerConnection) return;
+          const state = peerConnection.connectionState;
+          console.log("[RTC] Connection:", state);
+          if (["failed","disconnected","closed"].includes(state))
+            statusBox.textContent = "حالة الاتصال المرئي: " + state;
+        };
+        return peerConnection;
+      }
+
+      async function connectPeer(id) {
+        if (!localStream || !socket?.connected || peerConnection) return;
+        remoteUserId = id;
+        const pc = makePeer();
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit("private:rtc-offer", {requestId, description:pc.localDescription.toJSON()});
+          endCallBtn.disabled = false;
+        } catch (e) { statusBox.textContent = "تعذر بدء الاتصال: " + e.message; }
+      }
+
+      async function drainPendingIce(pc) {
+        while (pendingIceCandidates.length) {
+          const candidate = pendingIceCandidates.shift();
+          try { await pc.addIceCandidate(candidate); }
+          catch (e) { console.warn("تعذر إضافة مرشح ICE:", e); }
+        }
+      }
+
+      async function handleOffer(p) {
+        if (!p || String(p.requestId) !== requestId || !p.description) return;
+        if (!localStream) {
+          pendingOffer = p;
+          statusBox.textContent = "الطرف الآخر يحاول الاتصال. شغّل الكاميرا لقبول الاتصال.";
+          return;
+        }
+        try {
+          const pc = makePeer();
+          if (pc.remoteDescription) {
+            statusBox.textContent = "تم تجاهل عرض مكرر؛ الاتصال لديه وصف بعيد بالفعل.";
+            return;
+          }
+          await pc.setRemoteDescription(p.description);
+          await drainPendingIce(pc);
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          socket.emit("private:rtc-answer", {requestId, description:pc.localDescription.toJSON()});
+          endCallBtn.disabled = false;
+        } catch (e) { statusBox.textContent = "تعذر قبول الاتصال: " + e.message; }
+      }
+
+      socket.on("private:rtc-offer", handleOffer);
+      socket.on("private:rtc-answer", async p => {
+        if (String(p.requestId) !== requestId || !peerConnection || !p.description) return;
+        try {
+          await peerConnection.setRemoteDescription(p.description);
+          await drainPendingIce(peerConnection);
+        } catch (e) { statusBox.textContent = "تعذر إكمال الاتصال: " + e.message; }
+      });
+      socket.on("private:rtc-ice", async p => {
+        if (String(p.requestId) !== requestId || !p.candidate) return;
+        if (!peerConnection || !peerConnection.remoteDescription) {
+          pendingIceCandidates.push(p.candidate);
+          return;
+        }
+        try { await peerConnection.addIceCandidate(p.candidate); }
+        catch (e) { console.warn("تعذر إضافة مرشح ICE:", e); }
+      });
+      socket.on("private:rtc-end", p => {
+        if (String(p.requestId) === requestId) closePeer();
+      });
+
+      cameraBtn.addEventListener("click", async () => {
+        try {
+          if (!localStream) {
+            localStream = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+            let audioReady = false;
+            try {
+              const audioStream = await navigator.mediaDevices.getUserMedia({video:false,audio:true});
+              audioStream.getAudioTracks().forEach(track => localStream.addTrack(track));
+              audioReady = localStream.getAudioTracks().length > 0;
+            } catch (audioError) {
+              console.warn("تعذر تشغيل الميكروفون:", audioError);
+            }
+            localVideo.srcObject = localStream;
+            const handledPendingOffer = Boolean(pendingOffer);
+            if (pendingOffer) {
+              const offer = pendingOffer;
+              pendingOffer = null;
+              await handleOffer(offer);
+            }
+            cameraBtn.textContent = "📹";
+            cameraBtn.title = "إيقاف الكاميرا";
+            cameraBtn.setAttribute("aria-label", "إيقاف الكاميرا");
+            micBtn.disabled = !audioReady;
+            endCallBtn.disabled = false;
+            if (!handledPendingOffer) {
+              for (const id of peers.keys())
+                if (myUserId < id) await connectPeer(id);
+            }
+            statusBox.textContent = audioReady
+              ? "الكاميرا والميكروفون يعملان محليًا؛ جارٍ الاتصال بالطرف الآخر."
+              : "الكاميرا تعمل، لكن الميكروفون لم يعمل. أغلق أي تطبيق يستخدمه ثم أعد المحاولة.";
+          } else {
+            localStream.getVideoTracks().forEach(t => { t.enabled = !t.enabled; });
+            const cameraOn = localStream.getVideoTracks().some(t => t.enabled);
+            cameraBtn.textContent = cameraOn ? "📹" : "📷";
+            cameraBtn.title = cameraOn ? "إيقاف الكاميرا" : "تشغيل الكاميرا";
+            cameraBtn.setAttribute("aria-label", cameraBtn.title);
+          }
+        } catch (e) {
+          statusBox.textContent = "تعذر تشغيل الكاميرا. تحقق من أذونات المتصفح: " + e.message;
+        }
+      });
+      micBtn.addEventListener("click", () => {
+        if (!localStream) return;
+        const tracks = localStream.getAudioTracks();
+        const enable = tracks.some(t => !t.enabled);
+        tracks.forEach(t => { t.enabled = enable; });
+        micBtn.textContent = enable ? "🎙" : "🔇";
+        micBtn.title = enable ? "كتم الميكروفون" : "تشغيل الميكروفون";
+        micBtn.setAttribute("aria-label", micBtn.title);
+      });
+      function closePeer() {
+        if (peerConnection) peerConnection.close();
+        peerConnection = null;
+        remoteUserId = null;
+        pendingIceCandidates.length = 0;
+        remoteVideo.srcObject = null;
+        endCallBtn.disabled = true;
+      }
+      endCallBtn.addEventListener("click", () => {
+        if (socket?.connected) socket.emit("private:rtc-end", {requestId});
+        closePeer();
+      });
+      window.addEventListener("beforeunload", () => {
+        closePeer();
+        if (localStream) localStream.getTracks().forEach(t => t.stop());
+      });
+
+      async function uploadAttachment(file, button) {
+        if (!file) {
+          statusBox.textContent = "اختر ملفًا أولًا.";
+          return false;
+        }
+        button.disabled = true;
+        try {
+          const formData = new FormData();
+          formData.append("file", file, file.name);
+          const response = await fetch("/api/private/attachments?requestId=" + encodeURIComponent(requestId), {
+            method: "POST",
+            headers: {Authorization: "Bearer " + token},
+            body: formData
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(result.error || "تعذر رفع الملف.");
+          showMessage(result.message);
+          statusBox.textContent = "تم إرسال الملف.";
+          return true;
+        } catch (e) {
+          statusBox.textContent = e.message || "تعذر رفع الملف.";
+          return false;
+        } finally {
+          button.disabled = false;
+        }
+      }
+
+      document.getElementById("uploadBtn").addEventListener("click", async () => {
+        const picker = document.getElementById("attachmentInput");
+        const file = picker.files[0];
+        if (await uploadAttachment(file, document.getElementById("uploadBtn"))) {
+          picker.value = "";
+        }
+      });
+
+      const voiceRecordBtn = document.getElementById("voiceRecordBtn");
+      let voiceRecorder = null;
+      let voiceStream = null;
+      let voiceChunks = [];
+
+      voiceRecordBtn.addEventListener("click", async () => {
+        if (voiceRecorder && voiceRecorder.state === "recording") {
+          voiceRecorder.stop();
+          voiceRecordBtn.disabled = true;
+          voiceRecordBtn.textContent = "⌛";
+          voiceRecordBtn.title = "جارٍ تجهيز التسجيل";
+          voiceRecordBtn.setAttribute("aria-label", voiceRecordBtn.title);
+          return;
+        }
+
+        try {
+          if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+            throw new Error("التسجيل الصوتي غير مدعوم في هذا المتصفح.");
+          }
+          const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+          voiceStream = stream;
+          let mimeType = "";
+          if (MediaRecorder.isTypeSupported("audio/webm")) {
+            mimeType = "audio/webm";
+          } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+            mimeType = "audio/ogg";
+          } else {
+            stream.getTracks().forEach(track => track.stop());
+            voiceStream = null;
+            throw new Error("صيغة التسجيل المدعومة غير متاحة في هذا المتصفح.");
+          }
+
+          voiceChunks = [];
+          voiceRecorder = new MediaRecorder(stream, {mimeType});
+          voiceRecorder.addEventListener("dataavailable", event => {
+            if (event.data && event.data.size) voiceChunks.push(event.data);
+          });
+          voiceRecorder.addEventListener("stop", async () => {
+            try {
+              const type = voiceRecorder.mimeType || mimeType;
+              const extension = type.includes("ogg") ? "ogg" : "webm";
+              const blob = new Blob(voiceChunks, {type});
+              if (!blob.size) {
+                statusBox.textContent = "التسجيل فارغ؛ حاول مرة أخرى.";
+                return;
+              }
+              const file = new File(
+                [blob],
+                "voice-message-" + Date.now() + "." + extension,
+                {type}
+              );
+              await uploadAttachment(file, voiceRecordBtn);
+            } catch (e) {
+              statusBox.textContent = e.message || "تعذر تجهيز التسجيل الصوتي.";
+            } finally {
+              if (voiceStream) voiceStream.getTracks().forEach(track => track.stop());
+              voiceStream = null;
+              voiceRecorder = null;
+              voiceChunks = [];
+              voiceRecordBtn.disabled = false;
+              voiceRecordBtn.textContent = "🎤";
+              voiceRecordBtn.title = "تسجيل رسالة صوتية";
+              voiceRecordBtn.setAttribute("aria-label", voiceRecordBtn.title);
+            }
+          });
+          voiceRecorder.start();
+          voiceRecordBtn.textContent = "⏹";
+          voiceRecordBtn.title = "إنهاء التسجيل وإرساله";
+          voiceRecordBtn.setAttribute("aria-label", voiceRecordBtn.title);
+          statusBox.textContent = "جارٍ تسجيل الرسالة الصوتية؛ اضغط ⏹ لإنهائها وإرسالها.";
+        } catch (e) {
+          statusBox.textContent = e.message || "تعذر بدء التسجيل الصوتي.";
+          if (voiceStream) voiceStream.getTracks().forEach(track => track.stop());
+          voiceStream = null;
+        }
+      });
+
+      socket.on("connect", () => socket.emit("private:join", requestId));
+      socket.on("private:joined", () => { statusBox.textContent = "الغرفة الخاصة متصلة."; });
+      socket.on("private:message", m => {
+        if (String(m.requestId) === requestId) showMessage(m);
+      });
+      socket.on("private:error", e => { statusBox.textContent = e.error || "تعذر دخول الغرفة."; });
+      socket.on("connect_error", () => { statusBox.textContent = "تعذر الاتصال اللحظي؛ يمكنك إعادة تحميل الصفحة."; });
+    } catch (e) {
+      statusBox.textContent = e.message;
+      form.hidden = true;
+    }
+  }
+
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    const body = input.value.trim();
+    if (!body) return;
+    input.disabled = true;
+    try {
+      const data = await api("/api/private/messages", {
+        method:"POST",
+        body:JSON.stringify({requestId, body})
+      });
+      showMessage(data.message);
+      input.value = "";
+      statusBox.textContent = "تم إرسال الرسالة.";
+    } catch (e) {
+      statusBox.textContent = e.message;
+    } finally {
+      input.disabled = false;
+      input.focus();
+    }
+  });
+
+  start();
+}
+</script>
+</body>
+</html>
