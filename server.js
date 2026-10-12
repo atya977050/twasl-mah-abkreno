@@ -13,7 +13,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 const PORT = Number(process.env.PORT || 3011);
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'tawasul.db');
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'tawasul.db');
 const PAYMENT_EXEMPT_USER_ID = process.env.PAYMENT_EXEMPT_USER_ID || 'ABQ-4085029FADFB';
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 const db = new DatabaseSync(DB_PATH);
@@ -66,10 +67,10 @@ if (!requestColumns.includes('lawyer_id')) {
 
 app.use(express.json({ limit: '32kb' }));
 
-const RECEIPT_DIR = path.join(__dirname, 'data', 'payment-receipts');
+const RECEIPT_DIR = path.join(DATA_DIR, 'payment-receipts');
 fs.mkdirSync(RECEIPT_DIR, { recursive: true });
 
-const PRIVATE_FILE_DIR = path.join(__dirname, 'data', 'private-files');
+const PRIVATE_FILE_DIR = path.join(DATA_DIR, 'private-files');
 fs.mkdirSync(PRIVATE_FILE_DIR, { recursive: true });
 
 const privateColumns = db.prepare('PRAGMA table_info(private_requests)').all().map(c => c.name);
